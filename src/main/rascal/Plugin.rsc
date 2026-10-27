@@ -4,13 +4,10 @@ import IO;
 import ParseTree;
 import util::Reflective;
 import util::LanguageServer;
-import Relation;
 import Syntax;
 
 set[LanguageService] contribs() = {
-  parser(start[Module] (str input, loc origin) {
-    return parse(#start[Module], input, origin);
-  })
+  parsing(parser(#start[Module]), usesSpecialCaseHighlighting = false)
 };
 
 void main() {
@@ -18,7 +15,7 @@ void main() {
     language(
       getProjectPathConfig(|project://proyect2|),
       "Objectilang",
-      "obj",
+      {"obj"},
       "Plugin",
       "contribs"
     )
