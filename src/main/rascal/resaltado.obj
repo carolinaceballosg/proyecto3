@@ -1,0 +1,21 @@
+// Prueba de resaltado
+object Animal
+object Dog extends Animal
+object Punto(val x: Int, var y: Int) {
+  val z = 42
+}
+
+Dog.talk = method(): String {
+  print("Guau")
+}
+
+method main {
+  val edad = 3
+  val nombre = "Firulais"
+  val mayor = if edad > 5 then 1 else 0
+  val perro = new Dog
+  var total = edad * 2 + 10
+  total = total - 1
+  println("Hola $nombre, tienes ${ edad } anios")
+  for (i <- rango) print(i)
+}
