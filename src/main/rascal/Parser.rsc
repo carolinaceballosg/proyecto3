@@ -5,5 +5,7 @@ import Syntax;
 
 Tree parsear(str programa) {
   start[Module] arbol = parse(#start[Module], programa);
+  
   return arbol.top;
 }
+start[Module] parsearArchivo(loc archivo) = parse(#start[Module], archivo);
