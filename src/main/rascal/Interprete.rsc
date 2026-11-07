@@ -280,7 +280,6 @@ value eval(pot(l, r), Env env) {
 }
 value eval(negativo(e), Env env) { int x = aEntero(eval(e, env)); return -x; }
 
-// <, >, <=, >= funcionan con Int y con Char
 int comparar(value a, value b) {
   if (int x := a, int z := b) return x - z;
   if (str x := a, str z := b) return x < z ? -1 : (x == z ? 0 : 1);
