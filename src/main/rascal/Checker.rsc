@@ -1,15 +1,10 @@
 module Checker
 
-// Verificador de tipos de Objectilang con TypePal (basado en la seccion 9 del tutorial).
-// Trabaja sobre la sintaxis concreta: importa Syntax, NO importa AST.
-
 extend analysis::typepal::TypePal;
 import Syntax;
 import ParseTree;
 import IO;
 import Message;
-
-// ---------- Tipos y roles ----------
 
 data AType
   = tipoInt()
@@ -19,7 +14,7 @@ data AType
   | tipoLista(AType elemento)
   | tipoClase(str nombre)
   | tipoGenerico(str nombre)
-  | tipoDesconocido()        // lo que todavia no verificamos (llamadas a metodos, accesos con ".")
+  | tipoDesconocido()
   ;
 
 data IdRole
@@ -31,7 +26,6 @@ data IdRole
   | genericoId()
   ;
 
-// Como se muestran los tipos en los mensajes de error
 str prettyAType(tipoInt()) = "Int";
 str prettyAType(tipoBool()) = "Boolean";
 str prettyAType(tipoString()) = "String";
@@ -41,7 +35,6 @@ str prettyAType(tipoClase(str n)) = n;
 str prettyAType(tipoGenerico(str n)) = n;
 str prettyAType(tipoDesconocido()) = "?";
 
-// Tipos basicos del lenguaje (se aceptan Int e Integer)
 map[str, AType] basicos = (
   "Int": tipoInt(), "Integer": tipoInt(),
   "Boolean": tipoBool(), "Bool": tipoBool(),
@@ -51,10 +44,7 @@ map[str, AType] basicos = (
 
 set[IdRole] rolesValor = {valId(), varId(), paramId(), metodoId()};
 
-// ---------- Subtipos (incluye herencia con extends) ----------
-
-map[str, str] padres = ();   // clase -> clase padre; se llena antes de verificar
-
+map[str, str] padres = ();
 map[str, str] calcularPadres(Tree pt)
   = ("<n>" : "<p>"
     | /(ObjectCreation) `object <ClassName n> <GenericParams? g> extends <ClassName p> <ObjectParams? ps> <ObjectBody? b>` := pt);
@@ -78,29 +68,22 @@ bool esSubtipo(AType a, AType b) {
   return false;
 }
 
-// ---------- Ayudas ----------
 
 bool omitir(appl(prod(lit(_), _, _), _)) = true;
 bool omitir(appl(prod(layouts(_), _, _), _)) = true;
 default bool omitir(Tree _) = false;
 
-// Recolecta todos los hijos de un nodo (sin literales ni espacios)
 void collectHijos(Tree t, Collector c) {
   if (appl(_, list[Tree] hijos) := t) {
     for (Tree h <- hijos, !omitir(h)) collect(h, c);
   }
 }
 
-// Paso directo: el nodo tiene el mismo tipo que su unico hijo
 void pasar(Tree current, Tree hijo, Collector c) {
   c.fact(current, hijo);
   collect(hijo, c);
 }
 
-// ---------- Programa, bloques y scopes ----------
-
-// La raiz que entrega parse es start[Module] = espacio Module espacio.
-// Seguimos con el hijo del medio (el Module), igual que la version nueva de TypePal.
 void collect(start[Module] current, Collector c) {
   if (appl(_, list[Tree] hijos) := current) collect(hijos[1], c);
 }
@@ -117,7 +100,6 @@ void collect(current: (Block) `{ <Statement* ss> }`, Collector c) {
   c.leaveScope(current);
 }
 
-// Nodos que solo agrupan (parentesis, llaves, corchetes): se revisan sus hijos
 void collect(MainMethod current, Collector c) = collectHijos(current, c);
 void collect(ObjectParams current, Collector c) = collectHijos(current, c);
 void collect(GenericParams current, Collector c) = collectHijos(current, c);
@@ -131,8 +113,6 @@ void collect(IfBranch current, Collector c) = collectHijos(current, c);
 void collect(MethodBody current, Collector c) = collectHijos(current, c);
 void collect(Declaration current, Collector c) = collectHijos(current, c);
 
-// ---------- Objetos ----------
-
 void collect(current: (ObjectCreation) `object <ClassName n> <GenericParams? gs> <Heritage? h> <ObjectParams? ps> <ObjectBody? b>`, Collector c) {
   c.define("<n>", claseId(), n, defType(tipoClase("<n>")));
   c.enterScope(current);
@@ -140,7 +120,6 @@ void collect(current: (ObjectCreation) `object <ClassName n> <GenericParams? gs>
   c.leaveScope(current);
 }
 
-// Regla: la clase padre debe existir
 void collect(current: (Heritage) `extends <ClassName p>`, Collector c) {
   c.use(p, {claseId()});
 }
@@ -164,7 +143,6 @@ void collect(current: (Attribute) `var <Identifier n> : <Type t> = <Expression e
 void collect(current: (Attribute) `val <Identifier n> = <Expression e>`, Collector c) = declarar(n, valId(), e, c);
 void collect(current: (Attribute) `var <Identifier n> = <Expression e>`, Collector c) = declarar(n, varId(), e, c);
 
-// Metodo dentro de un objeto: nombre(params): Tipo = cuerpo
 void collect(MethodDecl current, Collector c) {
   if (appl(_, list[Tree] hijos) := current, Tree h <- hijos, Identifier n := h) {
     c.define("<n>", metodoId(), n, defType(tipoDesconocido()));
@@ -174,19 +152,15 @@ void collect(MethodDecl current, Collector c) {
   c.leaveScope(current);
 }
 
-// Clase.metodo = method(...) ...
 void collect(MethodAssignment current, Collector c) {
   c.enterScope(current);
     collectHijos(current, c);
   c.leaveScope(current);
 }
 
-// Regla: la clase de Clase.metodo debe existir
 void collect(current: (MethodPath) `<ClassName cl> . <{Identifier "."}+ ids>`, Collector c) {
   c.use(cl, {claseId()});
 }
-
-// ---------- Tipos escritos por el programador ----------
 
 void collect(current: (Type) `<ClassName n>`, Collector c) {
   str nombre = "<n>";
@@ -195,7 +169,7 @@ void collect(current: (Type) `<ClassName n>`, Collector c) {
   } else if (nombre == "List") {
     c.fact(current, tipoLista(tipoDesconocido()));
   } else {
-    c.use(n, {claseId(), genericoId()});   // Regla: el tipo debe existir
+    c.use(n, {claseId(), genericoId()});
     c.fact(current, n);
   }
 }
@@ -218,16 +192,12 @@ void collect(current: (Type) `<ClassName n> <TypeList? tl> -\> <Type r>`, Collec
   collect(tl, r, c);
 }
 
-// ---------- Declaraciones ----------
-
-// Con anotacion de tipo: el valor debe ser compatible con el tipo
 void declarar(Identifier n, IdRole rol, Type t, Expression e, Collector c) {
   c.define("<n>", rol, n, defType(t));
   c.requireSubType(e, t, error(e, "Se esperaba un valor de tipo %t, pero la expresion es de tipo %t", t, e));
   collect(t, e, c);
 }
 
-// Sin anotacion: el tipo se infiere de la expresion
 void declarar(Identifier n, IdRole rol, Expression e, Collector c) {
   c.define("<n>", rol, n, defType(e));
   collect(e, c);
@@ -238,9 +208,6 @@ void collect(current: (ValueDecl) `val <Identifier n> = <Expression e>`, Collect
 void collect(current: (VarDecl) `var <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, varId(), t, e, c);
 void collect(current: (VarDecl) `var <Identifier n> = <Expression e>`, Collector c) = declarar(n, varId(), e, c);
 
-// ---------- Sentencias ----------
-
-// Regla: la variable (o el primer nombre de a.b.c) debe existir
 void collect(current: (PathName) `<{Identifier "."}+ ids>`, Collector c) {
   if (Identifier primero <- ids) c.use(primero, rolesValor);
 }
@@ -285,8 +252,6 @@ void collect(current: (ForStatement) `for ( <ForVariables vs> \<- <Expression co
   c.leaveScope(current);
 }
 
-// ---------- Expresiones: pasos directos entre niveles de precedencia ----------
-
 void collect(current: (Expression) `<BoolExpr e>`, Collector c) = pasar(current, e, c);
 void collect(current: (BoolExpr) `<BoolAnd e>`, Collector c) = pasar(current, e, c);
 void collect(current: (BoolAnd) `<BoolAtomico e>`, Collector c) = pasar(current, e, c);
@@ -302,20 +267,15 @@ void collect(current: (Primary) `<Literal e>`, Collector c) = pasar(current, e, 
 void collect(current: (Primary) `<NewExpr e>`, Collector c) = pasar(current, e, c);
 void collect(current: (Primary) `( <Expression e> )`, Collector c) = pasar(current, e, c);
 
-// ---------- Expresiones: literales y variables ----------
-
 void collect(current: (Literal) `<IntLiteral i>`, Collector c) { c.fact(current, tipoInt()); }
 void collect(current: (Literal) `<BoolLiteral b>`, Collector c) { c.fact(current, tipoBool()); }
 void collect(current: (Literal) `<StringLiteral s>`, Collector c) { c.fact(current, tipoString()); }
 void collect(current: (Literal) `<CharLiteral ch>`, Collector c) { c.fact(current, tipoChar()); }
 
-// Regla: toda variable usada debe estar declarada
 void collect(current: (Primary) `<Identifier n>`, Collector c) {
   c.use(n, rolesValor);
   c.fact(current, n);
 }
-
-// ---------- Expresiones: operadores ----------
 
 void collect(current: (SumExpr) `<SumExpr l> + <MulExpr r>`, Collector c) {
   c.calculate("suma", current, [l, r], AType (Solver s) {
@@ -323,7 +283,7 @@ void collect(current: (SumExpr) `<SumExpr l> + <MulExpr r>`, Collector c) {
     AType b = s.getType(r);
     if (tipoDesconocido() := a || tipoDesconocido() := b) return tipoDesconocido();
     if (a == tipoInt() && b == tipoInt()) return tipoInt();
-    if (a == tipoString() || b == tipoString()) return tipoString();   // concatenacion
+    if (a == tipoString() || b == tipoString()) return tipoString();
     s.report(error(current, "No se puede sumar %t con %t", l, r));
     return tipoDesconocido();
   });
@@ -353,7 +313,6 @@ void collect(current: (UnaryExpr) `- <UnaryExpr e>`, Collector c) {
   collect(e, c);
 }
 
-// <, >, <=, >= : Int con Int o Char con Char
 void ordenar(str op, Tree current, Tree l, Tree r, Collector c) {
   c.calculate(op, current, [l, r], AType (Solver s) {
     AType a = s.getType(l);
@@ -370,7 +329,6 @@ void collect(current: (Comparison) `<SumExpr l> \> <SumExpr r>`, Collector c) = 
 void collect(current: (Comparison) `<SumExpr l> \<= <SumExpr r>`, Collector c) = ordenar("\<=", current, l, r, c);
 void collect(current: (Comparison) `<SumExpr l> \>= <SumExpr r>`, Collector c) = ordenar("\>=", current, l, r, c);
 
-// = y <> : ambos lados deben ser del mismo tipo
 void igualdad(str op, Tree current, Tree l, Tree r, Collector c) {
   c.calculate(op, current, [l, r], AType (Solver s) {
     s.requireComparable(l, r, error(current, "No se puede comparar %t con %t", l, r));
@@ -382,7 +340,6 @@ void igualdad(str op, Tree current, Tree l, Tree r, Collector c) {
 void collect(current: (Comparison) `<SumExpr l> = <SumExpr r>`, Collector c) = igualdad("=", current, l, r, c);
 void collect(current: (Comparison) `<SumExpr l> \<\> <SumExpr r>`, Collector c) = igualdad("\<\>", current, l, r, c);
 
-// and, or, neg : solo Boolean
 void logico(str op, Tree current, Tree l, Tree r, Collector c) {
   c.calculate(op, current, [l, r], AType (Solver s) {
     s.requireSubType(l, tipoBool(), error(l, "El operador %v espera Boolean, pero recibio %t", op, l));
@@ -403,7 +360,6 @@ void collect(current: (BoolAtomico) `neg <BoolAtomico e>`, Collector c) {
   collect(e, c);
 }
 
-// if como expresion: condicion Boolean y ramas del mismo tipo
 void collect(current: (Expression) `if <BoolExpr cond> then <Expression a> else <Expression b>`, Collector c) {
   c.calculate("if-expresion", current, [cond, a, b], AType (Solver s) {
     s.requireSubType(cond, tipoBool(), error(cond, "La condicion del if debe ser Boolean, pero es %t", cond));
@@ -413,9 +369,6 @@ void collect(current: (Expression) `if <BoolExpr cond> then <Expression a> else 
   collect(cond, a, b, c);
 }
 
-// ---------- Objetos en expresiones ----------
-
-// Regla: la clase usada en new debe existir
 void tipoNuevo(Tree current, ClassName n, Collector c) {
   str nombre = "<n>";
   if (nombre == "List") {
@@ -445,7 +398,6 @@ void collect(current: (NewSimple) `new <ClassName n> <TypeList? tl> <ObjectBody?
   c.leaveScope(current);
 }
 
-// Accesos y llamadas (x.campo, x.metodo(...)): por ahora no se verifica su tipo
 void collect(current: (PostFix) `<PostFix p> . <Identifier n>`, Collector c) {
   c.fact(current, tipoDesconocido());
   collect(p, c);
@@ -456,10 +408,6 @@ void collect(current: (PostFix) `<PostFix p> ( <{Expression ","}* args> )`, Coll
   collect(p, args, c);
 }
 
-// ---------- Punto de entrada (como TModelFromTree del tutorial) ----------
-
-// Recibe el arbol completo (start[Module]) tal como sale de parse(...).
-// No usamos pt.top: con Rascal 0.43 ese arbol llega sin posiciones (src) y TypePal falla.
 TModel objectilangTModel(Tree pt) {
   padres = calcularPadres(pt);
   Collector c = newCollector("objectilang", pt, tconfig(isSubType = esSubtipo));
@@ -467,7 +415,6 @@ TModel objectilangTModel(Tree pt) {
   return newSolver(pt, c.run()).run();
 }
 
-// Para probar desde el terminal: revisar(|file:///.../programa.ol|);
 void revisar(loc archivo) {
   list[Message] msgs = getMessages(objectilangTModel(parse(#start[Module], archivo)));
   if (msgs == []) println("Sin errores de tipo");
