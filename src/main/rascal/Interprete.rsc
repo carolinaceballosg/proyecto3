@@ -1,8 +1,5 @@
 module Interprete
 
-// Interprete de Objectilang sobre el AST (estilo de la seccion 6.1 del tutorial:
-// una funcion sobrecargada por cada constructor del AST).
-
 import AST;
 import Parser;
 import Imploder;
@@ -12,23 +9,19 @@ import List;
 
 alias Env = map[str, value];
 
-// ======================================================================
-// Objetos en tiempo de ejecucion
-// ======================================================================
+data Ref = ref(int id);
+data Instancia = instancia(str clase, map[str, value] campos);
 
-data Ref = ref(int id);                                         // referencia a un objeto del heap
-data Instancia = instancia(str clase, map[str, value] campos);  // un objeto: su clase y sus campos
-
-data Met                                                        // un metodo guardado en una clase
-  = metExpr(list[str] params, Expression cuerpoExpr)            // nombre(...) = expresion
-  | metBloque(list[str] params, Block cuerpoBloq)               // nombre(...) = { ... }  o  method(...) { ... }
-  | metVacio(list[str] params)                                  // method(...) sin cuerpo
+data Met
+  = metExpr(list[str] params, Expression cuerpoExpr)
+  | metBloque(list[str] params, Block cuerpoBloq)
+  | metVacio(list[str] params)
   ;
 
 data DefClase = defClase(
   str nombre,
-  str padre,                  // "" si no tiene extends
-  bool tieneParams,           // false: usa los parametros del padre
+  str padre,
+  bool tieneParams,
   list[str] params,
   list[Attribute] atributos,
   map[str, Met] metodos
@@ -54,14 +47,12 @@ DefClase crearClase(str n, str padre, list[ObjectParams] ps, list[ObjectBody] bs
       (m : crearMet(lp, body) | cuerpo(cs) <- bs, metodo(metodo(_, m, lp, _, body)) <- cs)
     );
 
-// object Nombre ... { ... }
 void registrar(objeto(objeto(str n, _, list[Heritage] hs, list[ObjectParams] ps, list[ObjectBody] bs))) {
   str padre = "";
   for (herencia(p) <- hs) padre = p;
   clases[n] = crearClase(n, padre, ps, bs);
 }
 
-// Clase.metodo = method(...) { ... }
 void registrar(asignMetodo(asigna(rutaClase(str cl, list[str] ms), list[Param] ps, _, list[Block] bs))) {
   if (cl notin clases) throw "La clase <cl> no existe";
   Met nuevoMet = (bs == []) ? metVacio(nombresParams(ps)) : metBloque(nombresParams(ps), bs[0]);
@@ -74,7 +65,6 @@ void registrar(asignMetodo(asigna(rutaId(list[str] ids), _, _, _))) {
   println("Aviso: <intercalate(".", ids)> = method... se ignora (use NombreDeClase.metodo)");
 }
 
-// Clases desde la raiz hasta cl: [Animal, Perro]
 list[str] linaje(str cl) {
   list[str] r = [];
   while (cl != "") {
@@ -108,7 +98,6 @@ void asignarCampo(int id, str n, value v) {
   heap[id] = inst;
 }
 
-// new Clase(args)
 value instanciar(str cl, list[value] args) {
   if (cl == "List") return args;
   list[str] cadenaClases = linaje(cl);
@@ -127,7 +116,6 @@ value instanciar(str cl, list[value] args) {
   return r;
 }
 
-// new Clase { override ... }  crea una subclase anonima
 value crear(str cl, list[value] args, list[ObjectBody] bs) {
   if (bs != [] && cl != "List") {
     anonimas += 1;
@@ -138,7 +126,6 @@ value crear(str cl, list[value] args, list[ObjectBody] bs) {
   return instanciar(cl, args);
 }
 
-// Llamar un metodo sobre un valor (objeto, lista o string)
 value llamar(value obj, str m, list[value] args) {
   if (ref(int id) := obj) {
     Met met = buscarMetodo(heap[id].clase, m);
@@ -167,13 +154,11 @@ default value metodoLista(list[value] xs, str m, list[value] args) { throw "Las 
 value metodoString(str s, "length", []) = size(s);
 default value metodoString(str s, str m, list[value] args) { throw "Los String no tienen el metodo <m>"; }
 
-// x.campo  (si no es campo, se llama como metodo sin argumentos)
 value obtener(value v, str campo) {
   if (ref(int id) := v, campo in heap[id].campos) return heap[id].campos[campo];
   return llamar(v, campo, []);
 }
 
-// Buscar un nombre: variable local, campo del objeto actual o metodo sin argumentos
 value buscar(str n, Env env) {
   if (n in env) return env[n];
   if ("$self" in env, ref(int id) := env["$self"]) {
@@ -189,10 +174,6 @@ value rutaValor(list[str] ids, Env env) {
   return v;
 }
 
-// ======================================================================
-// Texto (print, concatenacion e interpolacion)
-// ======================================================================
-
 str texto(value v) {
   if (ref(int id) := v) {
     Instancia inst = heap[id];
@@ -203,7 +184,6 @@ str texto(value v) {
   return "<v>";
 }
 
-// Procesa escapes (\n, \t, \", \\, \$) e interpolaciones ($x y ${expresion})
 str interpolar(str s, Env env) {
   str r = "";
   int i = 0;
@@ -245,16 +225,11 @@ int cierre(str s, int desde) {
   throw "Interpolacion sin cerrar: falta }";
 }
 
-// Evalua el texto de ${...}: se parsea como si fuera println(...) dentro de un main
 value evalTexto(str expr, Env env) {
   Programa p = convertir(parsear("method main { println(<expr>) }"));
   if (modulo(_, main(bloque([imprimir(imprime(_, Expression e))]))) := p) return eval(e, env);
   throw "No se pudo leer la expresion: <expr>";
 }
-
-// ======================================================================
-// Expresiones
-// ======================================================================
 
 value eval(literal(entero(n)), Env env) = n;
 value eval(literal(booleano(b)), Env env) = b;
@@ -299,7 +274,6 @@ value eval(no(e), Env env)         { bool x = aBool(eval(e, env)); return !x; }
 value eval(siValor(c, entonces, sino), Env env) =
   aBool(eval(c, env)) ? eval(entonces, env) : eval(sino, env);
 
-// Objetos
 value eval(nuevo(nuevo(str cl, _, list[Expression] args, list[ObjectBody] bs)), Env env)
   = crear(cl, [eval(a, env) | a <- args], bs);
 value eval(nuevoSimple(str cl, _, list[ObjectBody] bs), Env env) = crear(cl, [], bs);
@@ -320,11 +294,6 @@ value llamarPropio(str m, list[value] args, Env env) {
   throw "No se puede llamar <m>(...) fuera de un objeto";
 }
 
-// ======================================================================
-// Sentencias
-// ======================================================================
-
-// "$ultimo" guarda el valor de la ultima sentencia: es lo que devuelve un metodo con bloque
 Env conUltimo(Env env, value v) = env + ("$ultimo": v);
 value resultado(Env env) = ("$ultimo" in env) ? env["$ultimo"] : "";
 
@@ -364,7 +333,6 @@ Env ejecutar(condicional(si(c, entonces, sino)), Env env) {
 Env rama(ramaExpr(e), Env env) = conUltimo(env, eval(e, env));
 Env rama(ramaPrint(p), Env env) = ejecutar(imprimir(p), env);
 
-// a.b.metodo(args).otro()
 Env ejecutar(llamadaStmt(stmtLlamada(ruta(list[str] ids), list[Expression] args, list[StmtSuffix] sufs)), Env env) {
   list[value] vs = [eval(a, env) | a <- args];
   value v = (size(ids) == 1) ? llamarPropio(ids[0], vs, env) : llamar(rutaValor(prefix(ids), env), last(ids), vs);
@@ -394,7 +362,6 @@ value aplicarSufijos(value v, list[StmtSuffix] sufs, Env env) {
   return v;
 }
 
-// for (x in lista)   for (x <- lista)   for ((a, b) <- lista)
 Env ejecutar(bucle(para(enLista(str x, Expression col), Statement body)), Env env) = recorrer([x], eval(col, env), body, env);
 Env ejecutar(bucle(para(flecha(una(str x), Expression col), Statement body)), Env env) = recorrer([x], eval(col, env), body, env);
 Env ejecutar(bucle(para(flecha(varias(list[str] xs), Expression col), Statement body)), Env env) = recorrer(xs, eval(col, env), body, env);
@@ -411,7 +378,7 @@ Env recorrer(list[str] nombres, value col, Statement body, Env env) {
         throw "for: no se puede separar <texto(el)> en <size(nombres)> partes";
       }
       dentro = ejecutar(body, dentro);
-      env = (k : dentro[k] | k <- env);   // conservar cambios a variables de afuera
+      env = (k : dentro[k] | k <- env);
     }
     return env;
   }
@@ -425,10 +392,6 @@ Env ejecutarBloque(list[Statement] ss, Env env) {
   return env;
 }
 
-// ======================================================================
-// Punto de entrada
-// ======================================================================
-
 void correr(loc archivo) {
   Programa p = convertir(parsear(readFile(archivo)));
   clases = ();
@@ -436,8 +399,8 @@ void correr(loc archivo) {
   contador = 0;
   anonimas = 0;
   if (modulo(list[Declaration] ds, main(bloque(ss))) := p) {
-    for (d:objeto(_) <- ds) registrar(d);          // primero las clases
-    for (d:asignMetodo(_) <- ds) registrar(d);     // despues Clase.metodo = method ...
+    for (d:objeto(_) <- ds) registrar(d);  
+    for (d:asignMetodo(_) <- ds) registrar(d);     
     ejecutarBloque(ss, ());
   }
 }
