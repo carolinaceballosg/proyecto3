@@ -1,4 +1,4 @@
-module Interpeter
+module Interprete
 
 import AST;
 import Parser;
@@ -19,30 +19,33 @@ value eval(paren(e), Env env) = eval(e, env);
 
 value eval(suma(l, r), Env env) {
   a = eval(l, env); b = eval(r, env);
-  if (int x := a, int y := b) return x + y;
+  if (int x := a, int z := b) return x + z;
   return texto(a) + texto(b);
 }
-value eval(resta(l, r), Env env) { int x = toInt(eval(l, env)); int y = toInt(eval(r, env)); return x - y; }
-value eval(mul(l, r), Env env)   { int x = toInt(eval(l, env)); int y = toInt(eval(r, env)); return x * y; }
-value eval(div(l, r), Env env)   { int x = toInt(eval(l, env)); int y = toInt(eval(r, env)); return x / y; }
-value eval(modulo(l, r), Env env){ int x = toInt(eval(l, env)); int y = toInt(eval(r, env)); return x % y; }
-value eval(negativo(e), Env env) { int x = toInt(eval(e, env)); return -x; }
+value eval(resta(l, r), Env env) { int x = aEntero(eval(l, env)); int z = aEntero(eval(r, env)); return x - z; }
+value eval(mul(l, r), Env env)   { int x = aEntero(eval(l, env)); int z = aEntero(eval(r, env)); return x * z; }
+value eval(div(l, r), Env env)   { int x = aEntero(eval(l, env)); int z = aEntero(eval(r, env)); return x / z; }
+value eval(resto(l, r), Env env) { int x = aEntero(eval(l, env)); int z = aEntero(eval(r, env)); return x % z; }
+value eval(negativo(e), Env env) { int x = aEntero(eval(e, env)); return -x; }
 
-value eval(menor(l, r), Env env)      = toInt(eval(l, env)) < toInt(eval(r, env));
-value eval(mayor(l, r), Env env)      = toInt(eval(l, env)) > toInt(eval(r, env));
-value eval(menorIgual(l, r), Env env) = toInt(eval(l, env)) <= toInt(eval(r, env));
-value eval(mayorIgual(l, r), Env env) = toInt(eval(l, env)) >= toInt(eval(r, env));
+value eval(menor(l, r), Env env)      = aEntero(eval(l, env)) < aEntero(eval(r, env));
+value eval(mayor(l, r), Env env)      = aEntero(eval(l, env)) > aEntero(eval(r, env));
+value eval(menorIgual(l, r), Env env) = aEntero(eval(l, env)) <= aEntero(eval(r, env));
+value eval(mayorIgual(l, r), Env env) = aEntero(eval(l, env)) >= aEntero(eval(r, env));
 value eval(igual(l, r), Env env)      = eval(l, env) == eval(r, env);
 value eval(distinto(l, r), Env env)   = eval(l, env) != eval(r, env);
 
-value eval(operation(l, r), Env env) { bool x = toBool(eval(l, env)); bool y = toBool(eval(r, env)); return x || y; }
-value eval(y(l, r), Env env)         { bool x = toBool(eval(l, env)); bool z = toBool(eval(r, env)); return x && z; }
-value eval(no(e), Env env)           { bool x = toBool(eval(e, env)); return !x; }
+value eval(oLogico(l, r), Env env) { bool x = aBool(eval(l, env)); bool z = aBool(eval(r, env)); return x || z; }
+value eval(y(l, r), Env env)  { bool x = aBool(eval(l, env)); bool z = aBool(eval(r, env)); return x && z; }
+value eval(no(e), Env env)    { bool x = aBool(eval(e, env)); return !x; }
+
+value eval(siValor(c, entonces, sino), Env env) =
+  aBool(eval(c, env)) ? eval(entonces, env) : eval(sino, env);
 
 default value eval(Expression e, Env env) { throw "Expresion no soportada todavia: <e>"; }
 
-int toInt(value v) { if (int x := v) return x; throw "Se esperaba un entero, llego: <v>"; }
-bool toBool(value v) { if (bool x := v) return x; throw "Se esperaba un booleano, llego: <v>"; }
+int aEntero(value v) { if (int x := v) return x; throw "Se esperaba un entero, llego: <v>"; }
+bool aBool(value v) { if (bool x := v) return x; throw "Se esperaba un booleano, llego: <v>"; }
 
 // ---------- Sentencias ----------
 Env ejecutar(valDecl(valor(n, _, e)), Env env) = env + (n: eval(e, env));
@@ -57,7 +60,7 @@ Env ejecutar(imprimir(imprime(t, e)), Env env) {
 }
 
 Env ejecutar(condicional(si(c, entonces, sino)), Env env) {
-  if (toBool(eval(c, env))) return rama(entonces, env);
+  if (aBool(eval(c, env))) return rama(entonces, env);
   for (s <- sino) return rama(s, env);
   return env;
 }

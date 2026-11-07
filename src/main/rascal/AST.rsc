@@ -37,7 +37,7 @@ data MethodDecl = metodo(
     MethodBody body
 );
 data MethodBody
-  = cuerpo(Block block)
+  = cuerpoBloque(Block block)
   | expresion(Expression expression)
   ;
 data MethodAssignment = asigna(
@@ -90,7 +90,7 @@ data IfBranch
 
 data Expression
   = siValor(Expression condition, Expression thenExpr, Expression elseExpr)
-  | operation(Expression izq, Expression der)
+  | oLogico(Expression izq, Expression der)
   | y(Expression izq, Expression der)
   | no(Expression atomic)
   | menor(Expression izq, Expression der)
@@ -103,7 +103,7 @@ data Expression
   | resta(Expression izq, Expression der)
   | mul(Expression izq, Expression der)
   | div(Expression izq, Expression der)
-  | modulo(Expression izq, Expression der)
+  | resto(Expression izq, Expression der)
   | pot(Expression base, Expression exponent)
   | negativo(Expression expr)
   | acceso(Expression postFix, str name)

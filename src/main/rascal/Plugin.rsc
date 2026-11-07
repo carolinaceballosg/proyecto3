@@ -13,7 +13,7 @@ set[LanguageService] contribs() = {
 void main() {
   registerLanguage(
     language(
-      getProjectPathConfig(|project://proyect2|),
+      getProjectPathConfig(|project://proyecto3|),
       "Objectilang",
       {"obj"},
       "Plugin",

@@ -19,7 +19,8 @@ lexical StringPart
   | interpolation: Interpolation
   ;
 
-lexical StringText = @category="string" ![\"$]+ !>> ![\"$];
+lexical StringChar = ![\"$\\] | "\\" [\"$\\nt];
+lexical StringText = @category="string" StringChar+ !>> ![\"$];
 lexical Interpolation
   = simple: "$" Identifier
   | compleja: "$" "{" [\ \t\n\r]* !>> [\ \t\n\r] Expression [\ \t\n\r]* "}"
@@ -89,7 +90,7 @@ syntax MethodDecl
   ;
 
 syntax MethodBody
-  = cuerpo: Block
+  = cuerpoBloque: Block
   | expresion: Expression
   ;
 
@@ -132,11 +133,11 @@ syntax StmtSuffix
   ;
 
 syntax ValueDecl
-  = valor: "val" Identifier (":" Type)? "=" Expression
+  = valor: "val" !>> [a-zA-Z0-9_] Identifier (":" Type)? "=" Expression
   ;
 
 syntax VarDecl
-  = variable: "var" Identifier (":" Type)? "=" Expression
+  = variable: "var" !>> [a-zA-Z0-9_] Identifier (":" Type)? "=" Expression
   ;
 
 syntax Assignment
@@ -170,7 +171,7 @@ syntax IfBranch
   ;
 
 syntax BoolExpr
-  = operation: BoolExpr "or" BoolAnd
+  = oLogico: BoolExpr "or" BoolAnd
   | BoolAnd
   ;
 
@@ -208,7 +209,7 @@ syntax SumExpr
 syntax MulExpr
   = mul: MulExpr "*" PowExpr
   | div: MulExpr "/" PowExpr
-  | modulo: MulExpr "%" PowExpr
+  | resto: MulExpr "%" PowExpr
   | PowExpr
   ;
 
@@ -237,11 +238,11 @@ syntax Primary
   ;
 
 syntax NewExpr
-  = nuevo: "new" ClassName TypeList? "(" {Expression ","}* ")" ObjectBody?
+  = nuevo: "new" !>> [a-zA-Z0-9_] ClassName TypeList? "(" {Expression ","}* ")" ObjectBody?
   ;
 
 syntax NewSimple
-  = nuevoSimple: "new" ClassName TypeList? ObjectBody?
+  = nuevoSimple: "new" !>> [a-zA-Z0-9_] ClassName TypeList? ObjectBody?
   ;
 
 syntax Literal
