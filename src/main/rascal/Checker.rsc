@@ -6,6 +6,8 @@ module Checker
 extend analysis::typepal::TypePal;
 import Syntax;
 import ParseTree;
+import IO;
+import Message;
 
 // ---------- Tipos y roles ----------
 
@@ -21,12 +23,12 @@ data AType
   ;
 
 data IdRole
-  = rolClase()
-  | rolVal()
-  | rolVar()
-  | rolParam()
-  | rolMetodo()
-  | rolGenerico()
+  = claseId()
+  | valId()
+  | varId()
+  | paramId()
+  | metodoId()
+  | genericoId()
   ;
 
 // Como se muestran los tipos en los mensajes de error
@@ -47,7 +49,7 @@ map[str, AType] basicos = (
   "Char": tipoChar()
 );
 
-set[IdRole] rolesValor = {rolVal(), rolVar(), rolParam(), rolMetodo()};
+set[IdRole] rolesValor = {valId(), varId(), paramId(), metodoId()};
 
 // ---------- Subtipos (incluye herencia con extends) ----------
 
@@ -97,6 +99,12 @@ void pasar(Tree current, Tree hijo, Collector c) {
 
 // ---------- Programa, bloques y scopes ----------
 
+// La raiz que entrega parse es start[Module] = espacio Module espacio.
+// Seguimos con el hijo del medio (el Module), igual que la version nueva de TypePal.
+void collect(start[Module] current, Collector c) {
+  if (appl(_, list[Tree] hijos) := current) collect(hijos[1], c);
+}
+
 void collect(current: (Module) `<Declaration* ds> <MainMethod m>`, Collector c) {
   c.enterScope(current);
     collect(ds, m, c);
@@ -109,10 +117,24 @@ void collect(current: (Block) `{ <Statement* ss> }`, Collector c) {
   c.leaveScope(current);
 }
 
+// Nodos que solo agrupan (parentesis, llaves, corchetes): se revisan sus hijos
+void collect(MainMethod current, Collector c) = collectHijos(current, c);
+void collect(ObjectParams current, Collector c) = collectHijos(current, c);
+void collect(GenericParams current, Collector c) = collectHijos(current, c);
+void collect(ObjectBody current, Collector c) = collectHijos(current, c);
+void collect(TypeList current, Collector c) = collectHijos(current, c);
+void collect(Statement current, Collector c) = collectHijos(current, c);
+void collect(PrintStatement current, Collector c) = collectHijos(current, c);
+void collect(CallStmt current, Collector c) = collectHijos(current, c);
+void collect(StmtSuffix current, Collector c) = collectHijos(current, c);
+void collect(IfBranch current, Collector c) = collectHijos(current, c);
+void collect(MethodBody current, Collector c) = collectHijos(current, c);
+void collect(Declaration current, Collector c) = collectHijos(current, c);
+
 // ---------- Objetos ----------
 
 void collect(current: (ObjectCreation) `object <ClassName n> <GenericParams? gs> <Heritage? h> <ObjectParams? ps> <ObjectBody? b>`, Collector c) {
-  c.define("<n>", rolClase(), n, defType(tipoClase("<n>")));
+  c.define("<n>", claseId(), n, defType(tipoClase("<n>")));
   c.enterScope(current);
     collect(gs, h, ps, b, c);
   c.leaveScope(current);
@@ -120,12 +142,12 @@ void collect(current: (ObjectCreation) `object <ClassName n> <GenericParams? gs>
 
 // Regla: la clase padre debe existir
 void collect(current: (Heritage) `extends <ClassName p>`, Collector c) {
-  c.use(p, {rolClase()});
+  c.use(p, {claseId()});
 }
 
 void collect(GenericSingleParam current, Collector c) {
-  for (/ClassName n := current) c.define("<n>", rolGenerico(), n, defType(tipoGenerico("<n>")));
-  for (/Identifier n := current) c.define("<n>", rolGenerico(), n, defType(tipoGenerico("<n>")));
+  for (/ClassName n := current) c.define("<n>", genericoId(), n, defType(tipoGenerico("<n>")));
+  for (/Identifier n := current) c.define("<n>", genericoId(), n, defType(tipoGenerico("<n>")));
 }
 
 void collect(current: (Param) `<Identifier n> : <Type t>`, Collector c) = declararParam(n, t, c);
@@ -133,19 +155,19 @@ void collect(current: (Param) `val <Identifier n> : <Type t>`, Collector c) = de
 void collect(current: (Param) `var <Identifier n> : <Type t>`, Collector c) = declararParam(n, t, c);
 
 void declararParam(Identifier n, Type t, Collector c) {
-  c.define("<n>", rolParam(), n, defType(t));
+  c.define("<n>", paramId(), n, defType(t));
   collect(t, c);
 }
 
-void collect(current: (Attribute) `val <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, rolVal(), t, e, c);
-void collect(current: (Attribute) `var <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, rolVar(), t, e, c);
-void collect(current: (Attribute) `val <Identifier n> = <Expression e>`, Collector c) = declarar(n, rolVal(), e, c);
-void collect(current: (Attribute) `var <Identifier n> = <Expression e>`, Collector c) = declarar(n, rolVar(), e, c);
+void collect(current: (Attribute) `val <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, valId(), t, e, c);
+void collect(current: (Attribute) `var <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, varId(), t, e, c);
+void collect(current: (Attribute) `val <Identifier n> = <Expression e>`, Collector c) = declarar(n, valId(), e, c);
+void collect(current: (Attribute) `var <Identifier n> = <Expression e>`, Collector c) = declarar(n, varId(), e, c);
 
 // Metodo dentro de un objeto: nombre(params): Tipo = cuerpo
 void collect(MethodDecl current, Collector c) {
   if (appl(_, list[Tree] hijos) := current, Tree h <- hijos, Identifier n := h) {
-    c.define("<n>", rolMetodo(), n, defType(tipoDesconocido()));
+    c.define("<n>", metodoId(), n, defType(tipoDesconocido()));
   }
   c.enterScope(current);
     collectHijos(current, c);
@@ -161,7 +183,7 @@ void collect(MethodAssignment current, Collector c) {
 
 // Regla: la clase de Clase.metodo debe existir
 void collect(current: (MethodPath) `<ClassName cl> . <{Identifier "."}+ ids>`, Collector c) {
-  c.use(cl, {rolClase()});
+  c.use(cl, {claseId()});
 }
 
 // ---------- Tipos escritos por el programador ----------
@@ -173,7 +195,7 @@ void collect(current: (Type) `<ClassName n>`, Collector c) {
   } else if (nombre == "List") {
     c.fact(current, tipoLista(tipoDesconocido()));
   } else {
-    c.use(n, {rolClase(), rolGenerico()});   // Regla: el tipo debe existir
+    c.use(n, {claseId(), genericoId()});   // Regla: el tipo debe existir
     c.fact(current, n);
   }
 }
@@ -184,14 +206,14 @@ void collect(current: (Type) `<ClassName n> [ <{Type ","}+ args> ]`, Collector c
       c.calculate("tipo lista", current, [el], AType (Solver s) { return tipoLista(s.getType(el)); });
     }
   } else {
-    c.use(n, {rolClase()});
+    c.use(n, {claseId()});
     c.fact(current, n);
   }
   collect(args, c);
 }
 
 void collect(current: (Type) `<ClassName n> <TypeList? tl> -\> <Type r>`, Collector c) {
-  if ("<n>" notin basicos && "<n>" != "List") c.use(n, {rolClase(), rolGenerico()});
+  if ("<n>" notin basicos && "<n>" != "List") c.use(n, {claseId(), genericoId()});
   c.fact(current, tipoDesconocido());
   collect(tl, r, c);
 }
@@ -211,10 +233,10 @@ void declarar(Identifier n, IdRole rol, Expression e, Collector c) {
   collect(e, c);
 }
 
-void collect(current: (ValueDecl) `val <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, rolVal(), t, e, c);
-void collect(current: (ValueDecl) `val <Identifier n> = <Expression e>`, Collector c) = declarar(n, rolVal(), e, c);
-void collect(current: (VarDecl) `var <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, rolVar(), t, e, c);
-void collect(current: (VarDecl) `var <Identifier n> = <Expression e>`, Collector c) = declarar(n, rolVar(), e, c);
+void collect(current: (ValueDecl) `val <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, valId(), t, e, c);
+void collect(current: (ValueDecl) `val <Identifier n> = <Expression e>`, Collector c) = declarar(n, valId(), e, c);
+void collect(current: (VarDecl) `var <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, varId(), t, e, c);
+void collect(current: (VarDecl) `var <Identifier n> = <Expression e>`, Collector c) = declarar(n, varId(), e, c);
 
 // ---------- Sentencias ----------
 
@@ -247,7 +269,7 @@ void condicion(Tree cond, Collector c) {
 void collect(current: (ForStatement) `for ( <Identifier x> in <Expression col> ) <Statement body>`, Collector c) {
   collect(col, c);
   c.enterScope(current);
-    c.define("<x>", rolVal(), x, defType([col], AType (Solver s) {
+    c.define("<x>", valId(), x, defType([col], AType (Solver s) {
       if (tipoLista(el) := s.getType(col)) return el;
       return tipoDesconocido();
     }));
@@ -258,7 +280,7 @@ void collect(current: (ForStatement) `for ( <Identifier x> in <Expression col> )
 void collect(current: (ForStatement) `for ( <ForVariables vs> \<- <Expression col> ) <Statement body>`, Collector c) {
   collect(col, c);
   c.enterScope(current);
-    for (/Identifier v := vs) c.define("<v>", rolVal(), v, defType(tipoDesconocido()));
+    for (/Identifier v := vs) c.define("<v>", valId(), v, defType(tipoDesconocido()));
     collect(body, c);
   c.leaveScope(current);
 }
@@ -402,7 +424,7 @@ void tipoNuevo(Tree current, ClassName n, Collector c) {
     c.report(error(n, "No se puede usar new con el tipo basico %v", nombre));
     c.fact(current, basicos[nombre]);
   } else {
-    c.use(n, {rolClase()});
+    c.use(n, {claseId()});
     c.fact(current, n);
   }
 }
@@ -436,10 +458,18 @@ void collect(current: (PostFix) `<PostFix p> ( <{Expression ","}* args> )`, Coll
 
 // ---------- Punto de entrada (como TModelFromTree del tutorial) ----------
 
+// Recibe el arbol completo (start[Module]) tal como sale de parse(...).
+// No usamos pt.top: con Rascal 0.43 ese arbol llega sin posiciones (src) y TypePal falla.
 TModel objectilangTModel(Tree pt) {
-  if (pt has top) pt = pt.top;
   padres = calcularPadres(pt);
   Collector c = newCollector("objectilang", pt, tconfig(isSubType = esSubtipo));
   collect(pt, c);
   return newSolver(pt, c.run()).run();
+}
+
+// Para probar desde el terminal: revisar(|file:///.../programa.ol|);
+void revisar(loc archivo) {
+  list[Message] msgs = getMessages(objectilangTModel(parse(#start[Module], archivo)));
+  if (msgs == []) println("Sin errores de tipo");
+  for (m <- msgs) println("linea <m.at.begin.line>: <m.msg>");
 }
