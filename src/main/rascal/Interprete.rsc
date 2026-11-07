@@ -10,7 +10,6 @@ alias Env = map[str, value];
 
 str texto(value v) = "<v>";
 
-// ---------- Expresiones ----------
 value eval(literal(entero(n)), Env env) = n;
 value eval(literal(booleano(b)), Env env) = b;
 value eval(literal(cadena(s)), Env env) = substring(s, 1, size(s) - 1);
@@ -29,7 +28,6 @@ value eval(div(l, r), Env env)   { int x = aEntero(eval(l, env)); int z = aEnter
 value eval(resto(l, r), Env env) { int x = aEntero(eval(l, env)); int z = aEntero(eval(r, env)); return x % z; }
 value eval(negativo(e), Env env) { int x = aEntero(eval(e, env)); return -x; }
 
-// <, >, <=, >= funcionan con Int y con Char
 int comparar(value a, value b) {
   if (int x := a, int z := b) return x - z;
   if (str x := a, str z := b) return x < z ? -1 : (x == z ? 0 : 1);
@@ -54,7 +52,6 @@ default value eval(Expression e, Env env) { throw "Expresion no soportada todavi
 int aEntero(value v) { if (int x := v) return x; throw "Se esperaba un entero, llego: <v>"; }
 bool aBool(value v) { if (bool x := v) return x; throw "Se esperaba un booleano, llego: <v>"; }
 
-// ---------- Sentencias ----------
 Env ejecutar(valDecl(valor(n, _, e)), Env env) = env + (n: eval(e, env));
 Env ejecutar(varDecl(variable(n, _, e)), Env env) = env + (n: eval(e, env));
 
@@ -82,7 +79,6 @@ Env ejecutarBloque(list[Statement] ss, Env env) {
   return env;
 }
 
-// ---------- Punto de entrada ----------
 void correr(loc archivo) {
   Programa p = convertir(parsear(readFile(archivo)));
   if (modulo(_, main(bloque(ss))) := p) {
