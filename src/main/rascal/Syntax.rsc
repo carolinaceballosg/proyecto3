@@ -21,6 +21,10 @@ lexical StringPart
 
 lexical StringChar = ![\"$\\] | "\\" [\"$\\nt];
 lexical StringText = @category="string" StringChar+ !>> ![\"$];
+
+// Caracteres: 'a', '\n', '\''
+lexical CharLiteral = @category="string" [\'] CharChar [\'];
+lexical CharChar = ![\'\\\n] | [\\] [\'\\nt];
 lexical Interpolation
   = simple: "$" Identifier
   | compleja: "$" "{" [\ \t\n\r]* !>> [\ \t\n\r] Expression [\ \t\n\r]* "}"
@@ -249,6 +253,7 @@ syntax Literal
   = entero: IntLiteral
   | booleano: BoolLiteral
   | cadena: StringLiteral
+  | caracter: CharLiteral
   ;
 
 lexical BoolLiteral

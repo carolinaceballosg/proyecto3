@@ -124,4 +124,5 @@ data Literal
   = entero(int valor)
   | booleano(bool valorBool)
   | cadena(str cadena)
+  | caracter(str valor)
   ;

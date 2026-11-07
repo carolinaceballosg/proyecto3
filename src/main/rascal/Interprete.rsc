@@ -14,6 +14,7 @@ str texto(value v) = "<v>";
 value eval(literal(entero(n)), Env env) = n;
 value eval(literal(booleano(b)), Env env) = b;
 value eval(literal(cadena(s)), Env env) = substring(s, 1, size(s) - 1);
+value eval(literal(caracter(s)), Env env) = substring(s, 1, size(s) - 1);
 value eval(variable(n), Env env) = env[n];
 value eval(paren(e), Env env) = eval(e, env);
 
@@ -28,10 +29,16 @@ value eval(div(l, r), Env env)   { int x = aEntero(eval(l, env)); int z = aEnter
 value eval(resto(l, r), Env env) { int x = aEntero(eval(l, env)); int z = aEntero(eval(r, env)); return x % z; }
 value eval(negativo(e), Env env) { int x = aEntero(eval(e, env)); return -x; }
 
-value eval(menor(l, r), Env env)      = aEntero(eval(l, env)) < aEntero(eval(r, env));
-value eval(mayor(l, r), Env env)      = aEntero(eval(l, env)) > aEntero(eval(r, env));
-value eval(menorIgual(l, r), Env env) = aEntero(eval(l, env)) <= aEntero(eval(r, env));
-value eval(mayorIgual(l, r), Env env) = aEntero(eval(l, env)) >= aEntero(eval(r, env));
+// <, >, <=, >= funcionan con Int y con Char
+int comparar(value a, value b) {
+  if (int x := a, int z := b) return x - z;
+  if (str x := a, str z := b) return x < z ? -1 : (x == z ? 0 : 1);
+  throw "No se pueden comparar <a> y <b>";
+}
+value eval(menor(l, r), Env env)      = comparar(eval(l, env), eval(r, env)) < 0;
+value eval(mayor(l, r), Env env)      = comparar(eval(l, env), eval(r, env)) > 0;
+value eval(menorIgual(l, r), Env env) = comparar(eval(l, env), eval(r, env)) <= 0;
+value eval(mayorIgual(l, r), Env env) = comparar(eval(l, env), eval(r, env)) >= 0;
 value eval(igual(l, r), Env env)      = eval(l, env) == eval(r, env);
 value eval(distinto(l, r), Env env)   = eval(l, env) != eval(r, env);
 
