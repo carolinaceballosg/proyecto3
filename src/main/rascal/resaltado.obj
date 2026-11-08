@@ -16,6 +16,7 @@ method main {
   val perro = new Dog
   var total = edad * 2 + 10
   total = total - 1
+  val rango = 10
   println("Hola $nombre, tienes ${ edad } anios")
   for (i <- rango) print(i)
 }
