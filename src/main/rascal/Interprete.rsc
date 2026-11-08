@@ -110,7 +110,7 @@ void asignarCampo(int id, str n, value v) {
 
 // new Clase(args)
 value instanciar(str cl, list[value] args) {
-  if (cl == "List") return args;
+  if (cl == "List" && "List" notin clases) return args;   // List del lenguaje, salvo que el programa defina su propia clase List
   list[str] cadenaClases = linaje(cl);
   list[str] ps = [];
   for (k <- reverse(cadenaClases)) {
@@ -129,7 +129,7 @@ value instanciar(str cl, list[value] args) {
 
 // new Clase { override ... }  crea una subclase anonima
 value crear(str cl, list[value] args, list[ObjectBody] bs) {
-  if (bs != [] && cl != "List") {
+  if (bs != [] && (cl != "List" || "List" in clases)) {
     anonimas += 1;
     str nombre = "<cl>$<anonimas>";
     clases[nombre] = crearClase(nombre, cl, [], bs);
@@ -141,6 +141,7 @@ value crear(str cl, list[value] args, list[ObjectBody] bs) {
 // Llamar un metodo sobre un valor (objeto, lista o string)
 value llamar(value obj, str m, list[value] args) {
   if (ref(int id) := obj) {
+    if (m == "getClass" && args == [] && !tieneMetodo(heap[id].clase, m)) return heap[id].clase;
     Met met = buscarMetodo(heap[id].clase, m);
     if (size(met.params) != size(args)) throw "<m>: se esperaban <size(met.params)> argumentos y llegaron <size(args)>";
     Env entorno = ("$self": obj) + (met.params[i] : args[i] | i <- index(met.params));
@@ -258,8 +259,8 @@ value evalTexto(str expr, Env env) {
 
 value eval(literal(entero(n)), Env env) = n;
 value eval(literal(booleano(b)), Env env) = b;
-value eval(literal(cadena(s)), Env env) = interpolar(substring(s, 1, size(s) - 1), env);
-value eval(literal(caracter(s)), Env env) = escapar(substring(s, 1, size(s) - 1));
+value eval(literal(cadena(s)), Env env) = interpolar(s, env);      // el AST ya guarda el texto sin comillas
+value eval(literal(caracter(s)), Env env) = escapar(s);
 value eval(variable(n), Env env) = buscar(n, env);
 value eval(paren(e), Env env) = eval(e, env);
 
@@ -280,6 +281,7 @@ value eval(pot(l, r), Env env) {
 }
 value eval(negativo(e), Env env) { int x = aEntero(eval(e, env)); return -x; }
 
+// <, >, <=, >= funcionan con Int y con Char
 int comparar(value a, value b) {
   if (int x := a, int z := b) return x - z;
   if (str x := a, str z := b) return x < z ? -1 : (x == z ? 0 : 1);
