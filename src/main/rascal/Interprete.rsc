@@ -153,6 +153,7 @@ value metodoLista(list[value] xs, "contains", [value x]) = x in xs;
 default value metodoLista(list[value] xs, str m, list[value] args) { throw "Las listas no tienen el metodo <m>"; }
 
 value metodoString(str s, "length", []) = size(s);
+value metodoString(str s, "getSimpleName", []) = s;   // x.getClass.getSimpleName
 default value metodoString(str s, str m, list[value] args) { throw "Los String no tienen el metodo <m>"; }
 
 value obtener(value v, str campo) {
