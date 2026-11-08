@@ -17,7 +17,6 @@ data AType
   | tipoDesconocido()
   ;
 
-// Camino de una clase a su clase padre: asi una subclase "ve" los campos y metodos heredados
 data PathRole = extendsPath();
 
 data IdRole
@@ -72,12 +71,8 @@ bool esSubtipo(AType a, AType b) {
   return false;
 }
 
-// Un metodo puede tener el mismo nombre en una clase y en su padre (override).
-// Cualquier otro nombre repetido sigue siendo error de doble declaracion.
 bool permitirOverride(set[loc] defs, map[loc, Define] defines)
   = all(loc d <- defs, defines[d].idRole == metodoId());
-
-// ---------- Ayudas ----------
 
 bool omitir(appl(prod(lit(_), _, _), _)) = true;
 bool omitir(appl(prod(layouts(_), _, _), _)) = true;
@@ -122,14 +117,10 @@ void collect(StmtSuffix current, Collector c) = collectHijos(current, c);
 void collect(IfBranch current, Collector c) = collectHijos(current, c);
 void collect(MethodBody current, Collector c) = collectHijos(current, c);
 void collect(Declaration current, Collector c) = collectHijos(current, c);
-// ---------- Objetos ----------
 
-// La clase se define con todo el objeto (current) para que su definicion coincida con su scope,
-// como en el ejemplo FeatherweightJava de TypePal. Asi addPathToDef puede llegar a sus miembros.
 void collect(current: (ObjectCreation) `object <ClassName n> <GenericParams? gs> <Heritage? h> <ObjectParams? ps> <ObjectBody? b>`, Collector c) {
   c.define("<n>", claseId(), current, defType(tipoClase("<n>")));
   c.enterScope(current);
-    // Regla: la clase padre debe existir. Ademas se conecta con su scope (miembros heredados).
     for (/(Heritage) `extends <ClassName p>` := h) c.addPathToDef(p, {claseId()}, extendsPath());
     collect(gs, ps, b, c);
   c.leaveScope(current);
@@ -163,8 +154,6 @@ void collect(MethodDecl current, Collector c) {
   c.leaveScope(current);
 }
 
-// Clase.metodo = method(...) ...
-// Regla: la clase debe existir. El cuerpo puede usar los miembros y los genericos de esa clase.
 void collect(MethodAssignment current, Collector c) {
   c.enterScope(current);
     for (/(MethodPath) `<ClassName cl> . <{Identifier "."}+ ids>` := current) {
@@ -174,9 +163,7 @@ void collect(MethodAssignment current, Collector c) {
   c.leaveScope(current);
 }
 
-void collect(MethodPath current, Collector c) { }   // ya se reviso en MethodAssignment
-
-// ---------- Tipos escritos por el programador ----------
+void collect(MethodPath current, Collector c) { }
 
 void collect(current: (Type) `<ClassName n>`, Collector c) {
   str nombre = "<n>";

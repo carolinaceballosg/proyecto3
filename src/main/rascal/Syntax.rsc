@@ -22,7 +22,6 @@ lexical StringPart
 lexical StringChar = ![\"$\\] | "\\" [\"$\\nt];
 lexical StringText = @category="string" StringChar+ !>> ![\"$];
 
-// Caracteres: 'a', '\n', '\''
 lexical CharLiteral = @category="string" [\'] CharChar [\'];
 lexical CharChar = ![\'\\\n] | [\\] [\'\\nt];
 lexical Interpolation

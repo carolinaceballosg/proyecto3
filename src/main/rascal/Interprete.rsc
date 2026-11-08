@@ -257,7 +257,6 @@ value eval(pot(l, r), Env env) {
 }
 value eval(negativo(e), Env env) { int x = aEntero(eval(e, env)); return -x; }
 
-// <, >, <=, >= funcionan con Int y con Char
 int comparar(value a, value b) {
   if (int x := a, int z := b) return x - z;
   if (str x := a, str z := b) return x < z ? -1 : (x == z ? 0 : 1);
@@ -291,7 +290,6 @@ default value eval(Expression e, Env env) { throw "Expresion no soportada todavi
 int aEntero(value v) { if (int x := v) return x; throw "Se esperaba un entero, llego: <texto(v)>"; }
 bool aBool(value v) { if (bool x := v) return x; throw "Se esperaba un booleano, llego: <texto(v)>"; }
 
-// metodo() sin objeto delante: se llama sobre el objeto actual
 value llamarPropio(str m, list[value] args, Env env) {
   if ("$self" in env) return llamar(env["$self"], m, args);
   throw "No se puede llamar <m>(...) fuera de un objeto";
