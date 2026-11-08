@@ -17,6 +17,9 @@ data AType
   | tipoDesconocido()
   ;
 
+// Camino de una clase a su clase padre: asi una subclase "ve" los campos y metodos heredados
+data PathRole = extendsPath();
+
 data IdRole
   = claseId()
   | valId()
@@ -61,6 +64,7 @@ bool esSubclase(str hija, str madre) {
 
 bool esSubtipo(AType a, AType b) {
   if (a == b) return true;
+  if (overloadedAType(_) := a || overloadedAType(_) := b) return true;   // metodo redefinido con override
   if (tipoDesconocido() := a || tipoDesconocido() := b) return true;
   if (tipoGenerico(_) := a || tipoGenerico(_) := b) return true;
   if (tipoLista(x) := a, tipoLista(y) := b) return esSubtipo(x, y);
@@ -68,6 +72,12 @@ bool esSubtipo(AType a, AType b) {
   return false;
 }
 
+// Un metodo puede tener el mismo nombre en una clase y en su padre (override).
+// Cualquier otro nombre repetido sigue siendo error de doble declaracion.
+bool permitirOverride(set[loc] defs, map[loc, Define] defines)
+  = all(loc d <- defs, defines[d].idRole == metodoId());
+
+// ---------- Ayudas ----------
 
 bool omitir(appl(prod(lit(_), _, _), _)) = true;
 bool omitir(appl(prod(layouts(_), _, _), _)) = true;
@@ -112,16 +122,17 @@ void collect(StmtSuffix current, Collector c) = collectHijos(current, c);
 void collect(IfBranch current, Collector c) = collectHijos(current, c);
 void collect(MethodBody current, Collector c) = collectHijos(current, c);
 void collect(Declaration current, Collector c) = collectHijos(current, c);
+// ---------- Objetos ----------
 
+// La clase se define con todo el objeto (current) para que su definicion coincida con su scope,
+// como en el ejemplo FeatherweightJava de TypePal. Asi addPathToDef puede llegar a sus miembros.
 void collect(current: (ObjectCreation) `object <ClassName n> <GenericParams? gs> <Heritage? h> <ObjectParams? ps> <ObjectBody? b>`, Collector c) {
-  c.define("<n>", claseId(), n, defType(tipoClase("<n>")));
+  c.define("<n>", claseId(), current, defType(tipoClase("<n>")));
   c.enterScope(current);
-    collect(gs, h, ps, b, c);
+    // Regla: la clase padre debe existir. Ademas se conecta con su scope (miembros heredados).
+    for (/(Heritage) `extends <ClassName p>` := h) c.addPathToDef(p, {claseId()}, extendsPath());
+    collect(gs, ps, b, c);
   c.leaveScope(current);
-}
-
-void collect(current: (Heritage) `extends <ClassName p>`, Collector c) {
-  c.use(p, {claseId()});
 }
 
 void collect(GenericSingleParam current, Collector c) {
@@ -152,15 +163,20 @@ void collect(MethodDecl current, Collector c) {
   c.leaveScope(current);
 }
 
+// Clase.metodo = method(...) ...
+// Regla: la clase debe existir. El cuerpo puede usar los miembros y los genericos de esa clase.
 void collect(MethodAssignment current, Collector c) {
   c.enterScope(current);
+    for (/(MethodPath) `<ClassName cl> . <{Identifier "."}+ ids>` := current) {
+      c.addPathToDef(cl, {claseId()}, extendsPath());
+    }
     collectHijos(current, c);
   c.leaveScope(current);
 }
 
-void collect(current: (MethodPath) `<ClassName cl> . <{Identifier "."}+ ids>`, Collector c) {
-  c.use(cl, {claseId()});
-}
+void collect(MethodPath current, Collector c) { }   // ya se reviso en MethodAssignment
+
+// ---------- Tipos escritos por el programador ----------
 
 void collect(current: (Type) `<ClassName n>`, Collector c) {
   str nombre = "<n>";
@@ -386,6 +402,7 @@ void collect(current: (NewExpr) `new <ClassName n> <TypeList? tl> ( <{Expression
   tipoNuevo(current, n, c);
   collect(tl, args, c);
   c.enterScope(current);
+    if ("<b>" != "" && "<n>" notin basicos && "<n>" != "List") c.addPathToDef(n, {claseId()}, extendsPath());
     collect(b, c);
   c.leaveScope(current);
 }
@@ -394,6 +411,7 @@ void collect(current: (NewSimple) `new <ClassName n> <TypeList? tl> <ObjectBody?
   tipoNuevo(current, n, c);
   collect(tl, c);
   c.enterScope(current);
+    if ("<b>" != "" && "<n>" notin basicos && "<n>" != "List") c.addPathToDef(n, {claseId()}, extendsPath());
     collect(b, c);
   c.leaveScope(current);
 }
@@ -410,7 +428,7 @@ void collect(current: (PostFix) `<PostFix p> ( <{Expression ","}* args> )`, Coll
 
 TModel objectilangTModel(Tree pt) {
   padres = calcularPadres(pt);
-  Collector c = newCollector("objectilang", pt, tconfig(isSubType = esSubtipo));
+  Collector c = newCollector("objectilang", pt, tconfig(isSubType = esSubtipo, mayOverload = permitirOverride));
   collect(pt, c);
   return newSolver(pt, c.run()).run();
 }
