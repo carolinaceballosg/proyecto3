@@ -51,6 +51,22 @@ map[str, str] calcularPadres(Tree pt)
   = ("<n>" : "<p>"
     | /(ObjectCreation) `object <ClassName n> <GenericParams? g> extends <ClassName p> <ObjectParams? ps> <ObjectBody? b>` := pt);
 
+map[str, ClassName] arbolPadre = ();
+map[str, ClassName] calcularArbolPadre(Tree pt)
+  = ("<n>" : p
+    | /(ObjectCreation) `object <ClassName n> <GenericParams? g> extends <ClassName p> <ObjectParams? ps> <ObjectBody? b>` := pt);
+
+void conectarAncestros(ClassName n, Collector c) {
+  c.addPathToDef(n, {claseId()}, extendsPath());
+  str ancestro = "<n>";
+  int pasos = 0;
+  while (ancestro in arbolPadre && pasos < 100) {
+    c.addPathToDef(arbolPadre[ancestro], {claseId()}, extendsPath());
+    ancestro = "<arbolPadre[ancestro]>";
+    pasos += 1;
+  }
+}
+
 bool esSubclase(str hija, str madre) {
   int pasos = 0;
   while (hija != madre) {
@@ -121,7 +137,7 @@ void collect(Declaration current, Collector c) = collectHijos(current, c);
 void collect(current: (ObjectCreation) `object <ClassName n> <GenericParams? gs> <Heritage? h> <ObjectParams? ps> <ObjectBody? b>`, Collector c) {
   c.define("<n>", claseId(), current, defType(tipoClase("<n>")));
   c.enterScope(current);
-    for (/(Heritage) `extends <ClassName p>` := h) c.addPathToDef(p, {claseId()}, extendsPath());
+    for (/(Heritage) `extends <ClassName p>` := h) conectarAncestros(p, c);
     collect(gs, ps, b, c);
   c.leaveScope(current);
 }
@@ -157,7 +173,7 @@ void collect(MethodDecl current, Collector c) {
 void collect(MethodAssignment current, Collector c) {
   c.enterScope(current);
     for (/(MethodPath) `<ClassName cl> . <{Identifier "."}+ ids>` := current) {
-      c.addPathToDef(cl, {claseId()}, extendsPath());
+      conectarAncestros(cl, c);
     }
     collectHijos(current, c);
   c.leaveScope(current);
@@ -389,7 +405,7 @@ void collect(current: (NewExpr) `new <ClassName n> <TypeList? tl> ( <{Expression
   tipoNuevo(current, n, c);
   collect(tl, args, c);
   c.enterScope(current);
-    if ("<b>" != "" && "<n>" notin basicos && "<n>" != "List") c.addPathToDef(n, {claseId()}, extendsPath());
+    if ("<b>" != "" && "<n>" notin basicos && "<n>" != "List") conectarAncestros(n, c);
     collect(b, c);
   c.leaveScope(current);
 }
@@ -398,7 +414,7 @@ void collect(current: (NewSimple) `new <ClassName n> <TypeList? tl> <ObjectBody?
   tipoNuevo(current, n, c);
   collect(tl, c);
   c.enterScope(current);
-    if ("<b>" != "" && "<n>" notin basicos && "<n>" != "List") c.addPathToDef(n, {claseId()}, extendsPath());
+    if ("<b>" != "" && "<n>" notin basicos && "<n>" != "List") conectarAncestros(n, c);
     collect(b, c);
   c.leaveScope(current);
 }
@@ -415,6 +431,7 @@ void collect(current: (PostFix) `<PostFix p> ( <{Expression ","}* args> )`, Coll
 
 TModel objectilangTModel(Tree pt) {
   padres = calcularPadres(pt);
+  arbolPadre = calcularArbolPadre(pt);
   Collector c = newCollector("objectilang", pt, tconfig(isSubType = esSubtipo, mayOverload = permitirOverride));
   collect(pt, c);
   return newSolver(pt, c.run()).run();
