@@ -393,7 +393,7 @@ Env ejecutarBloque(list[Statement] ss, Env env) {
   return env;
 }
 
-void correr(loc archivo) {
+void generar(loc archivo) {
   Programa p = convertir(parsear(readFile(archivo)));
   clases = ();
   heap = ();
