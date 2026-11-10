@@ -52,6 +52,55 @@ map[str, str] calcularPadres(Tree pt)
     | /(ObjectCreation) `object <ClassName n> <GenericParams? g> extends <ClassName p> <ObjectParams? ps> <ObjectBody? b>` := pt);
 
 map[str, ClassName] arbolPadre = ();
+
+// Clases que define el programa (nombre -> su declaracion completa)
+map[str, Tree] declClases = ();
+map[str, Tree] calcularDeclClases(Tree pt)
+  = ("<n>" : oc
+    | /oc:(ObjectCreation) `object <ClassName n> <GenericParams? g> <Heritage? h> <ObjectParams? ps> <ObjectBody? b>` := pt);
+
+// List es la lista del lenguaje, salvo que el programa defina su propia clase List
+bool listaInterna() = "List" notin declClases;
+
+// Tipo anotado (":" Type)? entre los hijos directos de un nodo
+list[Type] tipoAnotado(Tree t) {
+  if (appl(_, list[Tree] hijos) := t) {
+    for (appl(regular(\opt(_)), [appl(_, list[Tree] partes)]) <- hijos, Type ty <- partes) return [ty];
+  }
+  return [];
+}
+
+DefInfo tipoDeRetorno(Tree decl) {
+  if ([Type t] := tipoAnotado(decl)) return defType(t);
+  return defType(tipoDesconocido());
+}
+
+// ---------- Acceso a miembros (x.campo, x.metodo) con useViaType ----------
+
+// Para buscar miembros de un tipo clase, TypePal busca la clase con ese nombre
+tuple[list[str] typeNames, set[IdRole] idRoles] nombresDeTipo(tipoClase(str n)) = <[n], {claseId()}>;
+default tuple[list[str] typeNames, set[IdRole] idRoles] nombresDeTipo(AType t) = <[], {}>;
+
+// Miembros de los tipos que no son clases (listas, String, genericos...)
+AType tipoSinNombre(AType contenedor, Tree selector, loc scope, Solver s) {
+  str m = "<selector>";
+  if (tipoLista(AType el) := contenedor) {
+    if (m == "size") return tipoInt();
+    if (m in {"isEmpty", "contains"}) return tipoBool();
+    if (m in {"get", "head"}) return el;
+    if (m in {"tail", "add"}) return contenedor;
+    s.report(error(selector, "Las listas no tienen el metodo %v", m));
+    return tipoDesconocido();
+  }
+  if (contenedor == tipoString()) {
+    if (m == "length") return tipoInt();
+    if (m == "getSimpleName") return tipoString();
+  }
+  if (contenedor in {tipoInt(), tipoBool(), tipoChar(), tipoString()}) {
+    s.report(error(selector, "El tipo %t no tiene el miembro %v", contenedor, m));
+  }
+  return tipoDesconocido();
+}
 map[str, ClassName] calcularArbolPadre(Tree pt)
   = ("<n>" : p
     | /(ObjectCreation) `object <ClassName n> <GenericParams? g> extends <ClassName p> <ObjectParams? ps> <ObjectBody? b>` := pt);
@@ -163,7 +212,11 @@ void collect(current: (Attribute) `var <Identifier n> = <Expression e>`, Collect
 
 void collect(MethodDecl current, Collector c) {
   if (appl(_, list[Tree] hijos) := current, Tree h <- hijos, Identifier n := h) {
-    c.define("<n>", metodoId(), n, defType(tipoDesconocido()));
+    c.define("<n>", metodoId(), n, tipoDeRetorno(current));
+    // nombre(...): Tipo = expresion  -> la expresion debe ser de ese tipo
+    if ([Type t] := tipoAnotado(current), Tree k <- hijos, (MethodBody) `<Expression e>` := k) {
+      c.requireSubType(e, t, error(e, "El metodo %v debe devolver %t, pero devuelve %t", "<n>", t, e));
+    }
   }
   c.enterScope(current);
     collectHijos(current, c);
@@ -174,6 +227,10 @@ void collect(MethodAssignment current, Collector c) {
   c.enterScope(current);
     for (/(MethodPath) `<ClassName cl> . <{Identifier "."}+ ids>` := current) {
       conectarAncestros(cl, c);
+      list[Identifier] partes = [i | Identifier i <- ids];
+      if ("<cl>" in declClases, size(partes) == 1) {
+        c.defineInScope(declClases["<cl>"], "<partes[0]>", metodoId(), partes[0], tipoDeRetorno(current));
+      }
     }
     collectHijos(current, c);
   c.leaveScope(current);
@@ -185,7 +242,7 @@ void collect(current: (Type) `<ClassName n>`, Collector c) {
   str nombre = "<n>";
   if (nombre in basicos) {
     c.fact(current, basicos[nombre]);
-  } else if (nombre == "List") {
+  } else if (nombre == "List" && listaInterna()) {
     c.fact(current, tipoLista(tipoDesconocido()));
   } else {
     c.use(n, {claseId(), genericoId()});
@@ -194,7 +251,7 @@ void collect(current: (Type) `<ClassName n>`, Collector c) {
 }
 
 void collect(current: (Type) `<ClassName n> [ <{Type ","}+ args> ]`, Collector c) {
-  if ("<n>" == "List") {
+  if ("<n>" == "List" && listaInterna()) {
     if (Type el <- args) {
       c.calculate("tipo lista", current, [el], AType (Solver s) { return tipoLista(s.getType(el)); });
     }
@@ -227,13 +284,23 @@ void collect(current: (ValueDecl) `val <Identifier n> = <Expression e>`, Collect
 void collect(current: (VarDecl) `var <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, varId(), t, e, c);
 void collect(current: (VarDecl) `var <Identifier n> = <Expression e>`, Collector c) = declarar(n, varId(), e, c);
 
+// a.b.c : a debe existir, b debe ser miembro del tipo de a, c miembro del tipo de b...
 void collect(current: (PathName) `<{Identifier "."}+ ids>`, Collector c) {
-  if (Identifier primero <- ids) c.use(primero, rolesValor);
+  list[Identifier] partes = [i | Identifier i <- ids];
+  c.use(partes[0], rolesValor);
+  for (int k <- [1..size(partes)]) {
+    if ("<partes[k]>" == "getClass") break;
+    c.useViaType(partes[k - 1], partes[k], rolesValor);
+  }
 }
 
 void collect(current: (Assignment) `<PathName p> = <Expression e>`, Collector c) {
-  if ((PathName) `<Identifier n>` := p) {
-    c.requireSubType(e, n, error(e, "No se puede asignar un valor de tipo %t a %v, que es de tipo %t", e, "<n>", n));
+  if ((PathName) `<{Identifier "."}+ ids>` := p) {
+    list[Identifier] partes = [i | Identifier i <- ids];
+    Identifier destino = partes[size(partes) - 1];
+    if (!("getClass" in ["<i>" | i <- partes])) {
+      c.requireSubType(e, destino, error(e, "No se puede asignar un valor de tipo %t a %v, que es de tipo %t", e, "<p>", destino));
+    }
   }
   collect(p, e, c);
 }
@@ -390,7 +457,7 @@ void collect(current: (Expression) `if <BoolExpr cond> then <Expression a> else 
 
 void tipoNuevo(Tree current, ClassName n, Collector c) {
   str nombre = "<n>";
-  if (nombre == "List") {
+  if (nombre == "List" && listaInterna()) {
     c.fact(current, tipoLista(tipoDesconocido()));
   } else if (nombre in basicos) {
     c.report(error(n, "No se puede usar new con el tipo basico %v", nombre));
@@ -419,20 +486,33 @@ void collect(current: (NewSimple) `new <ClassName n> <TypeList? tl> <ObjectBody?
   c.leaveScope(current);
 }
 
+// x.campo : el campo debe existir en la clase de x (o en sus ancestros) y tiene su tipo
 void collect(current: (PostFix) `<PostFix p> . <Identifier n>`, Collector c) {
-  c.fact(current, tipoDesconocido());
+  if ("<n>" == "getClass") {
+    c.fact(current, tipoString());
+  } else {
+    c.useViaType(p, n, rolesValor);
+    c.fact(current, n);
+  }
   collect(p, c);
 }
 
+// x.metodo(args) : tiene el tipo de retorno del metodo
 void collect(current: (PostFix) `<PostFix p> ( <{Expression ","}* args> )`, Collector c) {
-  c.fact(current, tipoDesconocido());
+  c.fact(current, p);
   collect(p, args, c);
 }
 
 TModel objectilangTModel(Tree pt) {
   padres = calcularPadres(pt);
   arbolPadre = calcularArbolPadre(pt);
-  Collector c = newCollector("objectilang", pt, tconfig(isSubType = esSubtipo, mayOverload = permitirOverride));
+  declClases = calcularDeclClases(pt);
+  Collector c = newCollector("objectilang", pt, tconfig(
+    isSubType = esSubtipo,
+    mayOverload = permitirOverride,
+    getTypeNamesAndRole = nombresDeTipo,
+    getTypeInNamelessType = tipoSinNombre
+  ));
   collect(pt, c);
   return newSolver(pt, c.run()).run();
 }
