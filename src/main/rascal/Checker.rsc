@@ -53,16 +53,13 @@ map[str, str] calcularPadres(Tree pt)
 
 map[str, ClassName] arbolPadre = ();
 
-// Clases que define el programa (nombre -> su declaracion completa)
 map[str, Tree] declClases = ();
 map[str, Tree] calcularDeclClases(Tree pt)
   = ("<n>" : oc
     | /oc:(ObjectCreation) `object <ClassName n> <GenericParams? g> <Heritage? h> <ObjectParams? ps> <ObjectBody? b>` := pt);
 
-// List es la lista del lenguaje, salvo que el programa defina su propia clase List
 bool listaInterna() = "List" notin declClases;
 
-// Tipo anotado (":" Type)? entre los hijos directos de un nodo
 list[Type] tipoAnotado(Tree t) {
   if (appl(_, list[Tree] hijos) := t) {
     for (appl(regular(\opt(_)), [appl(_, list[Tree] partes)]) <- hijos, Type ty <- partes) return [ty];
@@ -75,13 +72,9 @@ DefInfo tipoDeRetorno(Tree decl) {
   return defType(tipoDesconocido());
 }
 
-// ---------- Acceso a miembros (x.campo, x.metodo) con useViaType ----------
-
-// Para buscar miembros de un tipo clase, TypePal busca la clase con ese nombre
 tuple[list[str] typeNames, set[IdRole] idRoles] nombresDeTipo(tipoClase(str n)) = <[n], {claseId()}>;
 default tuple[list[str] typeNames, set[IdRole] idRoles] nombresDeTipo(AType t) = <[], {}>;
 
-// Miembros de los tipos que no son clases (listas, String, genericos...)
 AType tipoSinNombre(AType contenedor, Tree selector, loc scope, Solver s) {
   str m = "<selector>";
   if (tipoLista(AType el) := contenedor) {
@@ -213,7 +206,6 @@ void collect(current: (Attribute) `var <Identifier n> = <Expression e>`, Collect
 void collect(MethodDecl current, Collector c) {
   if (appl(_, list[Tree] hijos) := current, Tree h <- hijos, Identifier n := h) {
     c.define("<n>", metodoId(), n, tipoDeRetorno(current));
-    // nombre(...): Tipo = expresion  -> la expresion debe ser de ese tipo
     if ([Type t] := tipoAnotado(current), Tree k <- hijos, (MethodBody) `<Expression e>` := k) {
       c.requireSubType(e, t, error(e, "El metodo %v debe devolver %t, pero devuelve %t", "<n>", t, e));
     }
@@ -284,7 +276,6 @@ void collect(current: (ValueDecl) `val <Identifier n> = <Expression e>`, Collect
 void collect(current: (VarDecl) `var <Identifier n> : <Type t> = <Expression e>`, Collector c) = declarar(n, varId(), t, e, c);
 void collect(current: (VarDecl) `var <Identifier n> = <Expression e>`, Collector c) = declarar(n, varId(), e, c);
 
-// a.b.c : a debe existir, b debe ser miembro del tipo de a, c miembro del tipo de b...
 void collect(current: (PathName) `<{Identifier "."}+ ids>`, Collector c) {
   list[Identifier] partes = [i | Identifier i <- ids];
   c.use(partes[0], rolesValor);
@@ -486,7 +477,6 @@ void collect(current: (NewSimple) `new <ClassName n> <TypeList? tl> <ObjectBody?
   c.leaveScope(current);
 }
 
-// x.campo : el campo debe existir en la clase de x (o en sus ancestros) y tiene su tipo
 void collect(current: (PostFix) `<PostFix p> . <Identifier n>`, Collector c) {
   if ("<n>" == "getClass") {
     c.fact(current, tipoString());
@@ -497,7 +487,6 @@ void collect(current: (PostFix) `<PostFix p> . <Identifier n>`, Collector c) {
   collect(p, c);
 }
 
-// x.metodo(args) : tiene el tipo de retorno del metodo
 void collect(current: (PostFix) `<PostFix p> ( <{Expression ","}* args> )`, Collector c) {
   c.fact(current, p);
   collect(p, args, c);
